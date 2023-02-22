@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace DemoWebAPI.Controllers
@@ -15,6 +16,7 @@ namespace DemoWebAPI.Controllers
     [ApiController]
     public class UsersController : ControllerBase
     {
+        public static User user0 = new User();
         private readonly MyDbContext _context;
         private readonly AppSettings _appsettings;
         public UsersController(MyDbContext context, IOptionsMonitor<AppSettings> optionsMonitor)
@@ -23,15 +25,17 @@ namespace DemoWebAPI.Controllers
             _appsettings = optionsMonitor.CurrentValue;
         }
         [HttpPost("Register")]
-        public async Task<IActionResult> Register(RegisterModel model)
+        public async Task<ActionResult<User>> Register(RegisterModel model)
         {
             var user = _context.Users.FirstOrDefault(u => u.UserName == model.UserName);
             if (user == null)
             {
+                CreatePasswordHash(model.Password, out byte[] passwordHash, out byte[] passwordSalt);
                 var user1 = new User
                 {
                     UserName = model.UserName,
-                    Password = model.Password,
+                    PasswordHash = passwordHash,
+                    PasswordSalt = passwordSalt,
                     FullName = model.FullName,
                     Email = model.Email
                 };
@@ -45,18 +49,42 @@ namespace DemoWebAPI.Controllers
             }
             return BadRequest("Username already exists");
         }
+        private void CreatePasswordHash(string password, out byte[] passwordHash, out byte[] passwordSalt)
+        {
+            using(var hmac = new HMACSHA512())
+            {
+                passwordSalt = hmac.Key;
+                passwordHash = hmac.ComputeHash(Encoding.UTF8.GetBytes(password));
+            }
+        }
+        private bool VerifyPasswordHash(string password, byte[] passwordHash, byte[] passwordSalt)
+        {
+            using(var hmac = new HMACSHA512(passwordSalt))
+            {
+                var computedHash = hmac.ComputeHash(Encoding.UTF8.GetBytes(password));
+                return computedHash.SequenceEqual(passwordHash);
+            }
+        }
         [AllowAnonymous]
         [HttpPost("Login")]
         public async Task<IActionResult> Login(LoginModel model)
         {
-            var user = _context.Users.FirstOrDefault(u => u.UserName == model.UserName &&
-            u.Password == model.Password);
+            var user = _context.Users.FirstOrDefault(u => u.UserName == model.UserName
+            );
             if (user == null)
             {
                 return Ok(new
                 {
                     Success = false,
-                    Message = "Invalid user name/password"
+                    Message = "Invalid user name"
+                });
+            }
+            if(!VerifyPasswordHash(model.Password, user.PasswordHash, user.PasswordSalt))
+            {
+                return Ok(new
+                {
+                    Success = false,
+                    Message = "Invalid password"
                 });
             }
             var token = await GenerateToken(user);
