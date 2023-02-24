@@ -15,5 +15,6 @@ namespace DemoWebAPI.Data
         public byte[] PasswordSalt { get; set; }
         public string FullName { get; set; }
         public string Email { get; set; }
+        public virtual ICollection<Work> Works { get; set; }
     }
 }

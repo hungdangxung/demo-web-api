@@ -7,6 +7,7 @@ namespace DemoWebAPI.Data
         public MyDbContext(DbContextOptions options) : base(options) { }
         #region DbSet
         public DbSet<User> Users { get; set; }
+        public DbSet<Work> Works { get; set; }
         #endregion
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
